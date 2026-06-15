@@ -1,0 +1,162 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Profile information of an Eeortalk user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The unique Firebase Auth UID" },
+        "email": { "type": "string", "description": "Email address of the user" },
+        "nickname": { "type": "string", "description": "Display name" },
+        "eeortalkId": { "type": "string", "description": "Unique search ID starting with @" },
+        "profileImage": { "type": "string", "description": "URL of the profile image" },
+        "statusMessage": { "type": "string", "description": "User custom status text" },
+        "birthYear": { "type": "string", "description": "Birth year or age range" },
+        "region": { "type": "string", "description": "Region name such as Ochang, Seongangil, Yuryang-dong, etc." },
+        "school": { "type": "string", "description": "School name such as Chungbuk, Cheongju, Seowon, etc." },
+        "interests": {
+          "type": "array",
+          "description": "List of interest tags, bounded size"
+        },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "Access control role" },
+        "banned": { "type": "boolean", "description": "True if the user is suspended" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Registration date-time" }
+      },
+      "required": ["userId", "email", "nickname", "eeortalkId", "createdAt"]
+    },
+    "Friend": {
+      "title": "Friend Status",
+      "description": "Friendship and block association for a user",
+      "type": "object",
+      "properties": {
+        "friendUserId": { "type": "string", "description": "User ID of the friend" },
+        "nickname": { "type": "string", "description": "Nickname of the friend cached" },
+        "profileImage": { "type": "string", "description": "Profile picture of the friend cached" },
+        "blocked": { "type": "boolean", "description": "True if this friend is blocked" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When they became friends" }
+      },
+      "required": ["friendUserId", "nickname", "createdAt"]
+    },
+    "FriendRequest": {
+      "title": "Friend Request",
+      "description": "Request to connect as friends",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "description": "Request unique ID" },
+        "fromUserId": { "type": "string", "description": "ID of sender user" },
+        "fromNickname": { "type": "string", "description": "Nickname of the sender" },
+        "fromProfileImage": { "type": "string", "description": "Profile image of the sender" },
+        "toUserId": { "type": "string", "description": "ID of recipient user" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"], "description": "Status of request" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the request was sent" }
+      },
+      "required": ["requestId", "fromUserId", "fromNickname", "toUserId", "status", "createdAt"]
+    },
+    "ChatRoom": {
+      "title": "Chat Room",
+      "description": "1:1 or Group/Community Chat Room",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string", "description": "Unique room ID" },
+        "type": { "type": "string", "enum": ["direct", "meeting"], "description": "Type of room. 1:1, or community meeting room" },
+        "title": { "type": "string", "description": "Title of the chat room" },
+        "members": { "type": "array", "description": "List of user IDs participating in the room" },
+        "lastMessage": { "type": "string", "description": "Text of the last message sent" },
+        "lastMessageAt": { "type": "string", "format": "date-time", "description": "Timestamp of the last message" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "createdBy": { "type": "string", "description": "UID of the creator" },
+        "description": { "type": "string", "description": "For meeting rooms, brief description" }
+      },
+      "required": ["roomId", "type", "members", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single text or image message in a chat room",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string", "description": "Unique message ID" },
+        "senderId": { "type": "string", "description": "Sender user ID" },
+        "senderName": { "type": "string", "description": "Sender public nickname" },
+        "senderProfile": { "type": "string", "description": "Sender profile image URL" },
+        "text": { "type": "string", "description": "Message text contents" },
+        "imageUrl": { "type": "string", "description": "Message image attachment URL" },
+        "readBy": { "type": "array", "description": "List of user UIDs who read the message" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When message was sent" }
+      },
+      "required": ["messageId", "senderId", "senderName", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Safety report about a user",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string", "description": "Report ID" },
+        "reporterId": { "type": "string", "description": "UID of reporter" },
+        "reporterEmail": { "type": "string", "description": "Email of reporter" },
+        "targetUserId": { "type": "string", "description": "UID of user being reported" },
+        "targetNickname": { "type": "string", "description": "Nickname of user being reported" },
+        "reason": { "type": "string", "description": "Reason category" },
+        "detail": { "type": "string", "description": "Detail description" },
+        "status": { "type": "string", "enum": ["pending", "resolved"], "description": "Report resolution status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When report was filed" }
+      },
+      "required": ["reportId", "reporterId", "targetUserId", "reason", "status", "createdAt"]
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "Announcements by administrators",
+      "type": "object",
+      "properties": {
+        "noticeId": { "type": "string", "description": "Unique notice ID" },
+        "title": { "type": "string", "description": "Title of announcement" },
+        "content": { "type": "string", "description": "Content of announcement" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When created" },
+        "isActive": { "type": "boolean", "description": "Whether visible to users" }
+      },
+      "required": ["noticeId", "title", "content", "createdAt", "isActive"]
+    },
+    "AdminSettings": {
+      "title": "Admin Settings",
+      "description": "General system configuration properties such as bad words",
+      "type": "object",
+      "properties": {
+        "words": { "type": "array", "description": "List of blocked keywords" }
+      },
+      "required": ["words"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "Collection of all Eeortalk users indexed by UID"
+    },
+    "users/{userId}/friends": {
+      "schema": "Friend",
+      "description": "Subcollection of friends per user"
+    },
+    "friendRequests": {
+      "schema": "FriendRequest",
+      "description": "Collection of friend requests between users"
+    },
+    "chatRooms": {
+      "schema": "ChatRoom",
+      "description": "Collection of active chat rooms (1:1 and meetings)"
+    },
+    "chatRooms/{roomId}/messages": {
+      "schema": "Message",
+      "description": "Subcollection of messages inside a chat room"
+    },
+    "reports": {
+      "schema": "Report",
+      "description": "Inappropriate behavior reports recorded for admin attention"
+    },
+    "notices": {
+      "schema": "Notice",
+      "description": "Global notices"
+    },
+    "adminSettings": {
+      "schema": "AdminSettings",
+      "description": "Collection of system administration presets"
+    }
+  }
+}

@@ -1,0 +1,222 @@
+rules_version = '2';
+service cloudfirestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'lch200048@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Entity Validations ---
+    function isValidUser(data) {
+      return data.userId is string &&
+             data.email is string &&
+             data.nickname is string &&
+             data.nickname.size() <= 60 &&
+             data.eeortalkId is string &&
+             data.eeortalkId.size() <= 40 &&
+             (!('statusMessage' in data) || data.statusMessage is string) &&
+             (!('birthYear' in data) || data.birthYear is string) &&
+             (!('region' in data) || data.region is string) &&
+             (!('school' in data) || data.school is string) &&
+             (!('interests' in data) || data.interests is list) &&
+             (!('profileImage' in data) || data.profileImage is string) &&
+             (!('role' in data) || data.role is string) &&
+             (!('banned' in data) || data.banned is bool);
+    }
+
+    function isValidFriend(data) {
+      return data.friendUserId is string &&
+             data.nickname is string &&
+             (!('blocked' in data) || data.blocked is bool);
+    }
+
+    function isValidFriendRequest(data) {
+      return data.requestId is string &&
+             data.fromUserId is string &&
+             data.toUserId is string &&
+             data.status in ['pending', 'accepted', 'rejected'];
+    }
+
+    function isValidChatRoom(data) {
+      return data.roomId is string &&
+             data.type in ['direct', 'meeting'] &&
+             data.members is list &&
+             data.members.size() <= 200;
+    }
+
+    // Validation helper for messages (enforcing readBy integrity as well)
+    function isValidMessage(data) {
+      return data.messageId is string &&
+             data.senderId is string &&
+             data.senderName is string &&
+             (!('text' in data) || data.text is string) &&
+             (!('imageUrl' in data) || data.imageUrl is string) &&
+             (!('readBy' in data) || data.readBy is list);
+    }
+
+    function isValidReport(data) {
+      return data.reportId is string &&
+             data.reporterId is string &&
+             data.targetUserId is string &&
+             data.reason is string &&
+             data.status in ['pending', 'resolved'];
+    }
+
+    function isValidNotice(data) {
+      return data.noticeId is string &&
+             data.title is string &&
+             data.title.size() <= 200 &&
+             data.content is string &&
+             data.isActive is bool;
+    }
+
+    // --- Collection Routes ---
+
+    // 1. Users
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      
+      // Permit either a standard user create OR default admin register for lch200048@gmail.com
+      allow create: if isOwner(userId) && isValidUser(incoming()) && 
+                    (incoming().role == 'user' || (incoming().role == 'admin' && request.auth.token.email == 'lch200048@gmail.com')) && 
+                    incoming().banned == false;
+                    
+      allow update: if isSignedIn() && (
+        // Admin system override
+        isAdmin() || 
+        // User own updates (prevent altering critical control fields)
+        (isOwner(userId) && isValidUser(incoming()) && 
+         incoming().role == existing().role && 
+         incoming().banned == existing().banned && 
+         incoming().userId == existing().userId)
+      );
+      allow delete: if isAdmin();
+
+      // Friends Subcollection per User
+      match /friends/{friendUserId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create, update: if isOwner(userId) && isValidFriend(incoming());
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // 2. Friend Requests
+    match /friendRequests/{requestId} {
+      allow read: if isSignedIn() && (
+        resource.data.fromUserId == request.auth.uid || 
+        resource.data.toUserId == request.auth.uid || 
+        isAdmin()
+      );
+      allow create: if isSignedIn() && incoming().fromUserId == request.auth.uid && isValidFriendRequest(incoming());
+      allow update: if isSignedIn() && (
+        // Recipient can change status to accept/reject
+        (existing().toUserId == request.auth.uid && isValidFriendRequest(incoming()) && 
+         incoming().fromUserId == existing().fromUserId && 
+         incoming().toUserId == existing().toUserId) ||
+        // Sender can cancel
+        (existing().fromUserId == request.auth.uid && incoming().status == 'rejected' && 
+         incoming().fromUserId == existing().fromUserId && 
+         incoming().toUserId == existing().toUserId) ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.fromUserId == request.auth.uid || 
+        resource.data.toUserId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+
+    // 3. Chat Rooms
+    match /chatRooms/{roomId} {
+      allow read: if isSignedIn() && (
+        resource.data.type == 'meeting' || 
+        (request.auth.uid in resource.data.members) || 
+        isAdmin()
+      );
+      allow create: if isSignedIn() && isValidChatRoom(incoming()) && (
+        (incoming().type == 'direct' && request.auth.uid in incoming().members) ||
+        (incoming().type == 'meeting')
+      );
+      allow update: if isSignedIn() && isValidChatRoom(incoming()) && (
+        (existing().type == 'meeting') || 
+        (request.auth.uid in existing().members) || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+
+      // Chat Room Messages Subcollection
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && (
+          (request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.members) ||
+          isAdmin()
+        );
+        allow create: if isSignedIn() && isValidMessage(incoming()) && 
+          incoming().senderId == request.auth.uid && (
+            (request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.members) ||
+            isAdmin()
+          );
+        // Allow members of the chat room to update ONLY the readBy field for read receipts
+        allow update: if isSignedIn() && (
+          isAdmin() || (
+            (request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.members) &&
+            isValidMessage(incoming()) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['readBy'])
+          )
+        );
+        allow delete: if isAdmin();
+      }
+    }
+
+    // 4. Reports
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && incoming().reporterId == request.auth.uid && isValidReport(incoming());
+      allow update: if isAdmin() && isValidReport(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 5. Notices
+    match /notices/{noticeId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidNotice(incoming());
+      allow update: if isAdmin() && isValidNotice(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 6. Admin Settings (such as banned bad words list)
+    match /adminSettings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

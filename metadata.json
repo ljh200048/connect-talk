@@ -1,0 +1,6 @@
+{
+  "name": "이어톡",
+  "description": "친구와 바로 대화하는 청주 청년 SNS",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
