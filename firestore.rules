@@ -14,6 +14,7 @@ service cloudfirestore {
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.email == 'lch200048@gmail.com' ||
+        request.auth.token.email == 'lch20050@gmail.com' ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
@@ -91,11 +92,12 @@ service cloudfirestore {
 
     // 1. Users
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
       
-      // Permit either a standard user create OR default admin register for lch200048@gmail.com
+      // Permit either a standard user create OR default admin register for lch200048@gmail.com or lch20050@gmail.com
       allow create: if isOwner(userId) && isValidUser(incoming()) && 
-                    (incoming().role == 'user' || (incoming().role == 'admin' && request.auth.token.email == 'lch200048@gmail.com')) && 
+                    (incoming().role == 'user' || (incoming().role == 'admin' && (request.auth.token.email == 'lch200048@gmail.com' || request.auth.token.email == 'lch20050@gmail.com'))) && 
                     incoming().banned == false;
                     
       allow update: if isSignedIn() && (

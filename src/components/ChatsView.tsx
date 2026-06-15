@@ -78,12 +78,16 @@ export default function ChatsView({ currentUser, activeRoomId, onSelectRoom }: C
       // Fetch other user profile data to display real-time nicknames and avatars
       for (const uId of Array.from(userIdsToFetch)) {
         if (!roomUsers[uId]) {
-          const userSnap = await getDoc(doc(db, 'users', uId));
-          if (userSnap.exists()) {
-            setRoomUsers(prev => ({
-              ...prev,
-              [uId]: userSnap.data() as UserProfile
-            }));
+          try {
+            const userSnap = await getDoc(doc(db, 'users', uId));
+            if (userSnap.exists()) {
+              setRoomUsers(prev => ({
+                ...prev,
+                [uId]: userSnap.data() as UserProfile
+              }));
+            }
+          } catch (err) {
+            console.error(`Failed to fetch room user profile for ${uId}:`, err);
           }
         }
       }

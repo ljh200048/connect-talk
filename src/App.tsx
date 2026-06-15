@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { auth, db, handleFirestoreError, OperationType } from './firebase';
+import { auth, db, app, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { UserProfile, TabType, UserRole } from './types';
@@ -36,6 +36,13 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
 
+      // Console diagnostic logs for matching Firebase project confirmation
+      console.log("=== Auth State Changed Verification ===");
+      console.log("app.options.projectId:", app.options.projectId);
+      console.log("db.app.options.projectId:", db.app?.options?.projectId);
+      console.log("auth.currentUser?.uid:", auth.currentUser?.uid || (user ? user.uid : "None"));
+      console.log("=======================================");
+
       if (unsubUser) {
         unsubUser();
         unsubUser = null;
@@ -55,7 +62,7 @@ export default function App() {
           
           // Generate/Auto-create user document if it does not exist
           if (!userSnap || !userSnap.exists()) {
-            const isDefaultAdmin = user.email === 'lch200048@gmail.com';
+            const isDefaultAdmin = user.email === 'lch20050@gmail.com' || user.email === 'lch200048@gmail.com';
             const randomId = 'user_' + Math.floor(100000 + Math.random() * 900000);
             
             const defaultProfile = {

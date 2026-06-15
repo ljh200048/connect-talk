@@ -103,45 +103,22 @@ export default function FriendsView({ currentUser, onNavigateToChat }: FriendsPr
 
     setLoading(true);
     setSearchResults([]);
-    const path = 'users';
     
     try {
-      const q = query(collection(db, path));
-      const snapshot = await getDocs(q).catch((err) => {
-        handleFirestoreError(err, OperationType.LIST, path);
-        throw err;
+      const targetUID = searchQuery.trim();
+      const userRef = doc(db, 'users', targetUID);
+      const userSnap = await getDoc(userRef).catch((err) => {
+        return null;
       });
 
       const list: UserProfile[] = [];
-      const queryLower = searchQuery.toLowerCase().trim();
-
-      snapshot.forEach((doc) => {
-        const u = doc.data() as UserProfile;
-        
+      if (userSnap && userSnap.exists()) {
+        const u = userSnap.data() as UserProfile;
         // Exclude self and banned users
-        if (u.userId === currentUser.userId || u.banned) return;
-
-        let match = false;
-        
-        if (searchFilter === 'all') {
-          const nicknameMatch = u.nickname.toLowerCase().includes(queryLower);
-          const eeortalkIdMatch = u.eeortalkId.toLowerCase().includes(queryLower);
-          const regionMatch = u.region?.toLowerCase().includes(queryLower);
-          const schoolMatch = u.school?.toLowerCase().includes(queryLower);
-          const interestsMatch = u.interests?.some(i => i.toLowerCase().includes(queryLower));
-          match = nicknameMatch || eeortalkIdMatch || !!regionMatch || !!schoolMatch || !!interestsMatch;
-        } else if (searchFilter === 'region') {
-          match = !!u.region?.toLowerCase().includes(queryLower);
-        } else if (searchFilter === 'school') {
-          match = !!u.school?.toLowerCase().includes(queryLower);
-        } else if (searchFilter === 'interests') {
-          match = !!u.interests?.some(i => i.toLowerCase().includes(queryLower));
-        }
-
-        if (match) {
+        if (u.userId !== currentUser.userId && !u.banned) {
           list.push(u);
         }
-      });
+      }
 
       setSearchResults(list);
     } catch (err) {
@@ -524,7 +501,7 @@ export default function FriendsView({ currentUser, onNavigateToChat }: FriendsPr
                   type="text" 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="닉네임, ID, 학교 또는 관심사 검색" 
+                  placeholder="대상 회원의 고유 UID(User ID) 입력" 
                   className="flex-1 bg-transparent text-sm text-stone-800 focus:outline-none placeholder:text-stone-400 py-1.5"
                 />
               </div>
@@ -536,25 +513,13 @@ export default function FriendsView({ currentUser, onNavigateToChat }: FriendsPr
               </button>
             </form>
 
-            {/* Quick Tag Recommendations */}
-            <div className="bg-white border border-stone-100 rounded-2xl p-4 space-y-3">
-              <span className="text-xs font-bold text-stone-400 block mb-1">인기 태그 검색</span>
-              <div className="flex flex-wrap gap-1.5">
-                {['충북대', '청주대', '성안길', '오창', '율량동', '카페 투어', '맛집 탐방', '축구/풋살', '스터디/취업'].map(tag => (
-                  <button
-                    key={tag}
-                    onClick={() => {
-                      setSearchQuery(tag);
-                      // Formulate search programmatically
-                      setSearchFilter('all');
-                      setTimeout(() => handleSearch(), 100);
-                    }}
-                    className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold px-2.5 py-1 rounded-lg transition-colors border border-amber-100"
-                  >
-                    #{tag}
-                  </button>
-                ))}
-              </div>
+            {/* Zero-Trust Secure Search Guideline */}
+            <div className="bg-white border border-stone-100 rounded-2xl p-4 space-y-2">
+              <span className="text-xs font-bold text-stone-400 block mb-1">인기 태그 검색 비활성화 안내</span>
+              <p className="text-[11px] text-stone-500 leading-relaxed">
+                이어톡은 개인정보 및 안전 분쟁 예방의 실전 조치로 전체 회원 목록 무단 수집/탐색 조회를 비활성화했습니다. 
+                친구를 추가하려면 상대방의 <strong>고유 회원 ID (UID)</strong>를 전달받아 위 입력창에 검색해 주세요.
+              </p>
             </div>
 
             {/* Search Results */}

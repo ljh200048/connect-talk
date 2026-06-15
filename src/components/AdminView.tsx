@@ -33,22 +33,27 @@ export default function AdminView({ currentUser, onClose }: AdminViewProps) {
   const [newBannedWord, setNewBannedWord] = useState('');
   const [keywordSubmitting, setKeywordSubmitting] = useState(false);
 
-  // Load all users
-  useEffect(() => {
-    if (!auth.currentUser) return;
-    const path = 'users';
-    const unsub = onSnapshot(collection(db, path), (snap) => {
-      const uList: UserProfile[] = [];
-      snap.forEach(d => {
-        uList.push(d.data() as UserProfile);
-      });
-      setUsers(uList);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-    });
+  // Admin UID Search
+  const [adminSearchUID, setAdminSearchUID] = useState('');
+  const [searchedUser, setSearchedUser] = useState<UserProfile | null>(null);
+  const [adminSearchError, setAdminSearchError] = useState<string | null>(null);
 
-    return () => unsub();
-  }, []);
+  const handleAdminSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!adminSearchUID.trim()) return;
+    setAdminSearchError(null);
+    setSearchedUser(null);
+    try {
+      const snap = await getDoc(doc(db, 'users', adminSearchUID.trim()));
+      if (snap.exists()) {
+        setSearchedUser(snap.data() as UserProfile);
+      } else {
+        setAdminSearchError('사용자 ID(UID)를 찾을 수 없습니다.');
+      }
+    } catch (err: any) {
+      setAdminSearchError('사용자 조회 오류: ' + err.message);
+    }
+  };
 
   // Load all reports
   useEffect(() => {
@@ -116,6 +121,9 @@ export default function AdminView({ currentUser, onClose }: AdminViewProps) {
         throw err;
       });
       alert('사용자 제재 상태가 성공적으로 변경되었습니다.');
+      if (searchedUser && searchedUser.userId === targetUser.userId) {
+        setSearchedUser({ ...searchedUser, banned: newBanState });
+      }
     } catch (err) {
       console.error(err);
     }
@@ -287,7 +295,7 @@ export default function AdminView({ currentUser, onClose }: AdminViewProps) {
           className={`flex-1 min-w-[80px] py-3 text-center text-xs font-bold transition-all relative ${activeSection === 'users' ? 'text-amber-400' : 'text-stone-400'}`}
         >
           <Users className="w-4 h-4 mx-auto mb-1" />
-          유저 관리 ({users.length})
+          유저 관리 (검색)
           {activeSection === 'users' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400"></span>}
         </button>
 
@@ -322,41 +330,66 @@ export default function AdminView({ currentUser, onClose }: AdminViewProps) {
       <div className="flex-1 p-4 max-w-md mx-auto w-full">
         {/* SECTION 1: USERS LIST */}
         {activeSection === 'users' && (
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold text-stone-400 tracking-wider">이웃 회원 목록</h3>
-            {users.map(u => (
-              <div key={u.userId} className="bg-stone-800 rounded-2xl p-4 border border-stone-850 flex items-center justify-between shadow-sm">
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-stone-400 tracking-wider">안전 소통 회원 개별 조회</h3>
+            
+            <form onSubmit={handleAdminSearch} className="flex gap-2">
+              <input
+                type="text"
+                value={adminSearchUID}
+                onChange={(e) => setAdminSearchUID(e.target.value)}
+                placeholder="대상 회원의 고유 UID(user.uid) 입력"
+                className="flex-1 bg-stone-800 border-2 border-stone-750 rounded-xl px-3 py-2 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-amber-400"
+              />
+              <button
+                type="submit"
+                className="bg-amber-400 hover:bg-amber-500 text-stone-900 px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0"
+              >
+                검색
+              </button>
+            </form>
+
+            {adminSearchError && (
+              <p className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-xl">
+                {adminSearchError}
+              </p>
+            )}
+
+            {searchedUser ? (
+              <div className="bg-stone-850 rounded-2xl p-4 border border-stone-800 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
                   <img 
-                    src={u.profileImage || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.userId}`} 
+                    src={searchedUser.profileImage || `https://api.dicebear.com/7.x/adventurer/svg?seed=${searchedUser.userId}`} 
                     alt="Prof" 
                     referrerPolicy="no-referrer"
                     className="w-10 h-10 rounded-full object-cover border border-stone-700" 
                   />
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-xs text-stone-200">{u.nickname}</span>
-                      <span className="text-[9px] bg-stone-700 text-stone-300 font-mono px-1 rounded-sm">{u.eeortalkId}</span>
+                      <span className="font-bold text-xs text-stone-200">{searchedUser.nickname}</span>
+                      <span className="text-[9px] bg-stone-700 text-stone-300 font-mono px-1 rounded-sm">{searchedUser.eeortalkId}</span>
                     </div>
-                    <span className="text-[10px] text-stone-400 block mt-0.5">{u.email}</span>
+                    <span className="text-[10px] text-stone-400 block mt-0.5">{searchedUser.email}</span>
                   </div>
                 </div>
 
                 <div>
-                  {u.role === UserRole.ADMIN ? (
+                  {searchedUser.role === UserRole.ADMIN ? (
                     <span className="text-[10px] text-amber-400 bg-amber-400/10 px-2 py-1 rounded font-bold border border-amber-400/20">
                       총 관리군
                     </span>
-                  ) : u.banned ? (
+                  ) : searchedUser.banned ? (
                     <button
-                      onClick={() => handleToggleBan(u)}
-                      className="bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-extrabold px-3 py-1.5 rounded-xl transition-all my-auto shadow"
+                      type="button"
+                      onClick={() => handleToggleBan(searchedUser)}
+                      className="bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-extrabold px-3 py-1.5 rounded-xl transition-all my-auto shadow animate-pulse"
                     >
                       제재해제
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleToggleBan(u)}
+                      type="button"
+                      onClick={() => handleToggleBan(searchedUser)}
                       className="bg-amber-400 hover:bg-amber-500 text-stone-900 text-[10px] font-extrabold px-3 py-1.5 rounded-xl transition-all my-auto shadow"
                     >
                       정지처분
@@ -364,7 +397,11 @@ export default function AdminView({ currentUser, onClose }: AdminViewProps) {
                   )}
                 </div>
               </div>
-            ))}
+            ) : (
+              <div className="border border-dashed border-stone-800 rounded-2xl p-6 text-center text-stone-500 text-xs">
+                회원을 정지 또는 해제하려면 대상 회원의 고유 UID를 입력하고 검색을 완료하세요.
+              </div>
+            )}
           </div>
         )}
 

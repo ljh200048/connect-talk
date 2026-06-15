@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { auth, db } from '../firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { UserRole } from '../types';
@@ -32,11 +32,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
       // Check if user document already exists
       const userRef = doc(db, 'users', user.uid);
-      const d = await getDoc(userRef);
+      const d = await getDoc(userRef).catch((err) => {
+        handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
+        throw err;
+      });
 
       if (!d.exists()) {
         // Create user document inside Firestore
-        const isDefaultAdmin = user.email === 'lch200048@gmail.com';
+        const isDefaultAdmin = user.email === 'lch20050@gmail.com' || user.email === 'lch200048@gmail.com';
         
         // Generate random Eeortalk ID
         const randomId = 'user_' + Math.floor(100000 + Math.random() * 900000);
@@ -55,6 +58,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           role: isDefaultAdmin ? UserRole.ADMIN : UserRole.USER,
           banned: false,
           createdAt: serverTimestamp(),
+        }).catch((err) => {
+          handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}`);
+          throw err;
         });
       }
 
