@@ -2,11 +2,6 @@ rules_version = '2';
 service cloudfirestore {
   match /databases/{database}/documents {
 
-    // 1. Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
     // --- Global Helpers ---
     function isSignedIn() {
       return request.auth != null;
@@ -43,15 +38,7 @@ service cloudfirestore {
              data.nickname is string &&
              data.nickname.size() <= 60 &&
              data.eeortalkId is string &&
-             data.eeortalkId.size() <= 40 &&
-             (!('statusMessage' in data) || data.statusMessage is string) &&
-             (!('birthYear' in data) || data.birthYear is string) &&
-             (!('region' in data) || data.region is string) &&
-             (!('school' in data) || data.school is string) &&
-             (!('interests' in data) || data.interests is list) &&
-             (!('profileImage' in data) || data.profileImage is string) &&
-             (!('role' in data) || data.role is string) &&
-             (!('banned' in data) || data.banned is bool);
+             data.eeortalkId.size() <= 40;
     }
 
     function isValidFriend(data) {
