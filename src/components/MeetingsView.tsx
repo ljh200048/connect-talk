@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { 
   collection, query, where, getDocs, doc, setDoc, updateDoc, 
-  deleteDoc, onSnapshot, getDoc, orderBy, limit, arrayUnion, arrayRemove
+  deleteDoc, onSnapshot, getDoc, orderBy, limit, arrayUnion, arrayRemove, writeBatch
 } from 'firebase/firestore';
 import { UserProfile, ChatRoom, Message, REGIONS } from '../types';
 import { Users, Send, Image, X, ArrowLeft, PlusCircle, Sparkles, MessageCircle, MoreVertical, Trash2 } from 'lucide-react';
@@ -13,7 +13,11 @@ interface MeetingsViewProps {
 }
 
 export default function MeetingsView({ currentUser }: MeetingsViewProps) {
-  const [meetingRooms, setMeetingRooms] = useState<ChatRoom[]>([]);
+  const [allMeetingRooms, setAllMeetingRooms] = useState<ChatRoom[]>([]);
+  const [myMeetingRooms, setMyMeetingRooms] = useState<ChatRoom[]>([]);
+  const [listTab, setListTab] = useState<'my' | 'all'>('my');
+  const meetingRooms = listTab === 'my' ? myMeetingRooms : allMeetingRooms;
+
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -62,16 +66,19 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
     return () => unsub();
   }, []);
 
-  // Fetch meeting rooms and Seed missing ones automatically
+  // Fetch ALL meeting rooms and Seed missing ones automatically in Firestore
   useEffect(() => {
     if (!auth.currentUser) return;
     const path = 'chatRooms';
-    const q = query(collection(db, path), where('type', '==', 'meeting'));
+    const qAll = query(collection(db, path), where('type', '==', 'meeting'));
 
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
+    const unsubscribeAll = onSnapshot(qAll, async (snapshot) => {
       const list: ChatRoom[] = [];
       snapshot.forEach(d => {
-        list.push(d.data() as ChatRoom);
+        const data = d.data();
+        if (data && data.roomId) {
+          list.push(data as ChatRoom);
+        }
       });
 
       // If missing default seeds, bootstrap them silently in Firestore
@@ -83,9 +90,9 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
             const seedPayload: ChatRoom = {
               roomId: seed.id,
               type: 'meeting',
-              title: seed.title,
-              description: seed.desc,
-              region: seed.region,
+              title: seed.title || '',
+              description: seed.desc || '',
+              region: seed.region || '',
               members: [currentUser.userId], // Initially seed with the current creator
               createdAt: new Date().toISOString(),
               createdBy: 'system',
@@ -102,15 +109,42 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
           setLoading(false);
         }
       } else {
-        // Sort rooms by creation or last message
-        list.sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-        setMeetingRooms(list);
+        // Sort rooms by creation
+        list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setAllMeetingRooms(list);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, path);
     });
 
-    return () => unsubscribe();
+    return () => unsubscribeAll();
+  }, [currentUser.userId]);
+
+  // Fetch JOINED meeting rooms where user is a member
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const path = 'chatRooms';
+    const qMy = query(
+      collection(db, path),
+      where('type', '==', 'meeting'),
+      where('members', 'array-contains', currentUser.userId)
+    );
+
+    const unsubscribeMy = onSnapshot(qMy, (snapshot) => {
+      const list: ChatRoom[] = [];
+      snapshot.forEach(d => {
+        const data = d.data();
+        if (data && data.roomId) {
+          list.push(data as ChatRoom);
+        }
+      });
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setMyMeetingRooms(list);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    });
+
+    return () => unsubscribeMy();
   }, [currentUser.userId]);
 
   // Load active group room messages
@@ -130,17 +164,40 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Message[] = [];
+      const batchUpdateRefs: any[] = [];
+
       snapshot.forEach(d => {
-        list.push(d.data() as Message);
+        const msg = d.data() as Message;
+        msg.messageId = msg.messageId || d.id;
+        const msgReadBy = Array.isArray(msg.readBy) ? msg.readBy : [];
+        msg.readBy = msgReadBy;
+        list.push(msg);
+
+        // Standard read receipt functionality: If I haven't read this message, add me to readBy list
+        if (!msgReadBy.includes(currentUser.userId)) {
+          batchUpdateRefs.push(d.ref);
+        }
       });
+
       setMessages(list);
       scrollToBottom();
+
+      // Read receipts sync batch update using atomic arrayUnion
+      if (batchUpdateRefs.length > 0) {
+        const batch = writeBatch(db);
+        batchUpdateRefs.forEach(ref => {
+          batch.update(ref, {
+            readBy: arrayUnion(currentUser.userId)
+          });
+        });
+        batch.commit().catch(err => console.error('Read batch commit failed in MeetingsView', err));
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, path);
     });
 
     return () => unsubscribe();
-  }, [activeRoomId]);
+  }, [activeRoomId, currentUser.userId]);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -221,10 +278,13 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
       senderName: currentUser.nickname,
       senderProfile: currentUser.profileImage || '',
       text: cleanedText || '',
-      imageUrl: selectedImage || undefined,
       readBy: [currentUser.userId],
       createdAt: new Date().toISOString()
     };
+
+    if (selectedImage) {
+      newMsg.imageUrl = selectedImage;
+    }
 
     setText('');
     setSelectedImage(null);
@@ -239,7 +299,7 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
       // Update room last updated details
       const roomPath = `chatRooms/${activeRoomId}`;
       await updateDoc(doc(db, 'chatRooms', activeRoomId), {
-        lastMessage: selectedImage ? '📷 사진을 전송했습니다.' : cleanedText,
+        lastMessage: (selectedImage ? '📷 사진을 전송했습니다.' : cleanedText) || '',
         lastMessageAt: new Date().toISOString()
       }).catch((err) => {
         handleFirestoreError(err, OperationType.UPDATE, roomPath);
@@ -248,7 +308,8 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
 
       scrollToBottom();
     } catch (err) {
-      console.error(err);
+      console.error("Failed to send message/update room:", err);
+      alert("메시지를 전송하는 중 오류가 발생했습니다. 다시 시도해주세요.");
     }
   };
 
@@ -264,7 +325,8 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
       });
       setActiveRoomId(room.roomId);
     } catch (err) {
-      console.error(err);
+      console.error("Join room error:", err);
+      alert("모임방에 참여하는 도중 오류가 발생했습니다. 다시 시도해주세요.");
     }
   };
 
@@ -280,8 +342,10 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
         throw err;
       });
       setActiveRoomId(null);
-    } catch (err) {
-      console.error(err);
+      alert('모임방에서 정상적으로 퇴장했습니다.');
+    } catch (err: any) {
+      console.error("Leave room error:", err);
+      alert(`모임방을 나가는 도중 오류가 발생했습니다: ${err?.message || "다시 시도해주세요."}`);
     }
   };
 
@@ -296,7 +360,8 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
       });
       alert('모임방이 삭제되었습니다.');
     } catch (err) {
-      console.error(err);
+      console.error("Delete room error:", err);
+      alert("모임방을 삭제하는 중 오류가 발생했습니다. 다시 시도해주세요.");
     }
   };
 
@@ -312,12 +377,12 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
       const newRoomPayload: ChatRoom = {
         roomId,
         type: 'meeting',
-        title: newRoomTitle,
-        description: newRoomDesc,
-        region: newRoomRegion,
+        title: newRoomTitle || '',
+        description: newRoomDesc || '',
+        region: newRoomRegion || '',
         members: [currentUser.userId],
         createdAt: new Date().toISOString(),
-        createdBy: currentUser.userId,
+        createdBy: currentUser.userId || '',
         lastMessage: '새로운 지역 모임방이 성공적으로 열렸습니다. 🙌',
         lastMessageAt: new Date().toISOString()
       };
@@ -333,12 +398,13 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
       setNewRoomDesc('');
       setActiveRoomId(roomId);
     } catch (err) {
-      console.error(err);
+      console.error("Create room error:", err);
+      alert("모임방을 개설하는 중 오류가 발생했습니다. 다시 시도해주세요.");
     }
   };
 
-  const activeRoom = meetingRooms.find(r => r.roomId === activeRoomId);
-  const isMemberOfActive = activeRoom?.members.includes(currentUser.userId);
+  const activeRoom = allMeetingRooms.find(r => r.roomId === activeRoomId) || myMeetingRooms.find(r => r.roomId === activeRoomId);
+  const isMemberOfActive = activeRoom?.members ? activeRoom.members.includes(currentUser.userId) : false;
 
   // Group Details View
   if (activeRoomId && activeRoom) {
@@ -450,6 +516,16 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
                         </div>
 
                         <div className="text-right space-y-0.5 flex-shrink-0">
+                          {(() => {
+                            const msgReadBy = Array.isArray(msg.readBy) ? msg.readBy : [];
+                            const totalMembers = activeRoom.members ? activeRoom.members.length : 1;
+                            const unreadCount = Math.max(0, totalMembers - msgReadBy.length);
+                            return (
+                              <span className={`text-[9px] block font-extrabold mr-0.5 ${unreadCount > 0 ? 'text-brand-orange animate-pulse' : 'text-stone-400'}`}>
+                                {unreadCount > 0 ? `안 읽음 ${unreadCount}` : '읽음'}
+                              </span>
+                            );
+                          })()}
                           <span className="text-[9px] text-stone-500 block font-mono font-bold">
                             {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                           </span>
@@ -570,6 +646,30 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
         </button>
       </div>
 
+      {/* Tab Switcher */}
+      <div className="flex px-4 py-2 bg-brand-bg border-b border-brand-border/40 gap-2">
+        <button
+          onClick={() => setListTab('my')}
+          className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+            listTab === 'my' 
+              ? 'bg-brand-green text-white border-brand-green shadow-xs font-semibold' 
+              : 'bg-brand-sand text-stone-600 border-brand-border hover:bg-brand-yellow/10 font-semibold'
+          }`}
+        >
+          내가 참여 중인 방 ({myMeetingRooms.length})
+        </button>
+        <button
+          onClick={() => setListTab('all')}
+          className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+            listTab === 'all' 
+              ? 'bg-brand-green text-white border-brand-green shadow-xs font-semibold' 
+              : 'bg-brand-sand text-stone-600 border-brand-border hover:bg-brand-yellow/10 font-semibold'
+          }`}
+        >
+          전체 모임방 ({allMeetingRooms.length})
+        </button>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {loading ? (
           <div className="text-center py-20">
@@ -577,10 +677,16 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
             <p className="text-xs text-stone-500 font-bold">모임방 정보를 불러오는 중...</p>
           </div>
         ) : meetingRooms.length === 0 ? (
-          <p className="text-center py-10 text-stone-400 font-bold">모임방 개설을 클릭해 첫 방문을 시작해보세요!</p>
+          <div className="text-center py-12 bg-brand-sand/40 border-2 border-dashed border-brand-border rounded-[28px] p-6 mx-2">
+            <p className="text-xs text-stone-500 font-bold leading-relaxed whitespace-pre-wrap">
+              {listTab === 'my' 
+                ? '아직 참여 중인 모임방이 없습니다.\n전체 모임방 탭에서 마음에 드는 방에 입장해보세요! 🚀' 
+                : '개설된 모임방이 없습니다.\n방 개설 버튼을 눌러 첫 모임을 시작해보세요! 🎉'}
+            </p>
+          </div>
         ) : (
           meetingRooms.map(room => {
-            const isMember = room.members.includes(currentUser.userId);
+            const isMember = room.members ? room.members.includes(currentUser.userId) : false;
             const canDelete = room.createdBy === currentUser.userId || currentUser.role === 'admin';
 
             return (
@@ -621,12 +727,34 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
                 <div className="mt-4 pt-3 border-t border-brand-border/40 flex justify-between items-center text-xs text-stone-500 font-bold">
                   <div className="flex items-center gap-1">
                     <Users className="w-3.5 h-3.5 text-brand-orange" />
-                    <span>실시간 {room.members.length}명 참여중</span>
+                    <span>실시간 {(room.members || []).length}명 참여중</span>
                   </div>
 
-                  <span className={`font-black px-3 py-1 rounded-full text-[10px] border transition-all ${isMember ? 'bg-brand-yellow text-brand-green border-brand-border shadow-xs' : 'bg-brand-bg text-brand-green border-brand-border'}`}>
-                    {isMember ? '입장 완료' : '들어가기'}
-                  </span>
+                  <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    {isMember ? (
+                      <>
+                        <button
+                          onClick={() => handleLeaveRoom(room.roomId)}
+                          className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-full text-[10px] font-extrabold transition-all"
+                        >
+                          나가기
+                        </button>
+                        <button
+                          onClick={() => setActiveRoomId(room.roomId)}
+                          className="px-3 py-1 bg-brand-yellow text-brand-green border border-brand-border rounded-full text-[10px] font-extrabold shadow-xs transition-all"
+                        >
+                          입장하기
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleJoinRoom(room)}
+                        className="px-3 py-1 bg-brand-bg hover:bg-brand-yellow/20 text-brand-green border border-brand-border rounded-full text-[10px] font-extrabold transition-all"
+                      >
+                        입장하기
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );

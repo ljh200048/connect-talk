@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { 
   collection, query, where, getDocs, doc, setDoc, updateDoc, 
-  deleteDoc, onSnapshot, addDoc, getDoc, orderBy, limit, writeBatch
+  deleteDoc, onSnapshot, addDoc, getDoc, orderBy, limit, writeBatch, arrayUnion
 } from 'firebase/firestore';
 import { UserProfile, ChatRoom, Message } from '../types';
 import { Send, Image, X, ArrowLeft, MoreVertical, LogOut, Check, CheckCheck } from 'lucide-react';
@@ -119,10 +119,13 @@ export default function ChatsView({ currentUser, activeRoomId, onSelectRoom }: C
 
       snapshot.forEach((d) => {
         const msg = d.data() as Message;
+        msg.messageId = msg.messageId || d.id;
+        const msgReadBy = Array.isArray(msg.readBy) ? msg.readBy : [];
+        msg.readBy = msgReadBy;
         list.push(msg);
 
         // Standard read receipt functionality: If I haven't read this message, add me to readBy list
-        if (!msg.readBy.includes(currentUser.userId)) {
+        if (!msgReadBy.includes(currentUser.userId)) {
           batchUpdateRefs.push(d.ref);
         }
       });
@@ -130,12 +133,12 @@ export default function ChatsView({ currentUser, activeRoomId, onSelectRoom }: C
       setMessages(list);
       scrollToBottom();
 
-      // Read receipts sync batch update
+      // Read receipts sync batch update using atomic arrayUnion
       if (batchUpdateRefs.length > 0) {
         const batch = writeBatch(db);
         batchUpdateRefs.forEach(ref => {
           batch.update(ref, {
-            readBy: [...(list.find(m => m.messageId === ref.id)?.readBy || []), currentUser.userId]
+            readBy: arrayUnion(currentUser.userId)
           });
         });
         batch.commit().catch(err => console.error('Read batch commit failed', err));
@@ -228,10 +231,13 @@ export default function ChatsView({ currentUser, activeRoomId, onSelectRoom }: C
       senderName: currentUser.nickname,
       senderProfile: currentUser.profileImage || '',
       text: cleanedText || '',
-      imageUrl: selectedImage || undefined,
       readBy: [currentUser.userId],
       createdAt: new Date().toISOString()
     };
+
+    if (selectedImage) {
+      newMsg.imageUrl = selectedImage;
+    }
 
     setText('');
     setSelectedImage(null);
@@ -458,12 +464,15 @@ export default function ChatsView({ currentUser, activeRoomId, onSelectRoom }: C
 
                         {/* Read/Time Indicators */}
                         <div className="text-right space-y-0.5 flex-shrink-0">
-                          {/* Unread receipt indicator: 1:1 direct room has exactly 2 members. If readBy < 2, and it's mine, show single block */}
-                          {isMine && (
-                            <span className="text-[9px] block text-brand-orange font-black mr-0.5 animate-pulse">
-                              {msg.readBy.length < 2 ? '1' : ''}
-                            </span>
-                          )}
+                          {(() => {
+                            const msgReadBy = Array.isArray(msg.readBy) ? msg.readBy : [];
+                            const isUnread = msgReadBy.length < 2;
+                            return (
+                              <span className={`text-[9px] block font-extrabold mr-0.5 ${isUnread ? 'text-brand-orange animate-pulse' : 'text-stone-400'}`}>
+                                {isUnread ? '안 읽음' : '읽음'}
+                              </span>
+                            );
+                          })()}
                           <span className="text-[9px] text-stone-400 block font-mono font-bold">
                             {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                           </span>

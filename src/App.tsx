@@ -91,6 +91,29 @@ export default function App() {
           
           if (userSnap && userSnap.exists()) {
             setCurrentUser(userSnap.data() as UserProfile);
+          } else {
+            // Offline/Connection fallback: If Firestore/Network is offline or mismatched config prevents loading,
+            // we initialize isOfflineFallback so the user is not stuck on the login loading screen.
+            const isDefaultAdmin = user.email === 'lch20050@gmail.com' || user.email === 'lch200048@gmail.com';
+            const randomId = 'user_offline_' + Math.floor(100000 + Math.random() * 900000);
+            
+            const offlineProfile: UserProfile = {
+              userId: user.uid,
+              email: user.email || `${user.uid}@eeortalk.local`,
+              nickname: user.displayName || `오프라인청년_${randomId}`,
+              eeortalkId: `@${randomId}`,
+              profileImage: user.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.uid}`,
+              statusMessage: '⚠️ Firebase 연결 대기 중 (오프라인 모드). .env의 설정을 확인해 주세요!',
+              birthYear: '2000(20대)',
+              region: '성안길(시내)',
+              school: '충북대학교',
+              interests: ['☕ 카페 투어', '🍕 맛집 탐방', '🍿 영화/넷플'],
+              role: isDefaultAdmin ? UserRole.ADMIN : UserRole.USER,
+              banned: false,
+              createdAt: new Date().toISOString() as any,
+              isOfflineFallback: true,
+            };
+            setCurrentUser(offlineProfile);
           }
 
           unsubUser = onSnapshot(userRef, (snapshot) => {
@@ -193,6 +216,16 @@ export default function App() {
     <div className="min-h-screen bg-brand-cream/60 flex justify-center text-brand-dark selection:bg-brand-yellow/50 selection:text-brand-green p-0 md:py-4">
       {/* Simulation Mobile Applet Shell Framer on Desktop, Fluid on Mobile */}
       <div className="w-full max-w-md bg-brand-bg min-h-screen md:min-h-[92vh] md:max-h-[92vh] flex flex-col relative shadow-2xl overflow-hidden md:border-4 md:border-brand-green md:rounded-[36px]">
+        {currentUser?.isOfflineFallback && (
+          <div className="bg-red-500 text-white text-[10px] px-4 py-2 font-semibold text-center z-50 flex flex-col gap-0.5 border-b border-brand-border animate-pulse">
+            <span className="font-extrabold flex items-center justify-center gap-1">
+              ⚠️ Firestore 오프라인 모드 연결 대기 중
+            </span>
+            <span>
+              현재 프로젝트: <code className="bg-red-700/50 px-1 rounded">connect-talk-cd4ee</code> (.env 설정을 확인해 주세요)
+            </span>
+          </div>
+        )}
         
         {/* Core Subviews content stream */}
         <div className="flex-1 overflow-hidden">

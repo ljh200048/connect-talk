@@ -1,24 +1,23 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import defaultFirebaseConfig from '../firebase-applet-config.json';
 
 // Support both dynamically injected environment variables and fallback file
-const metaEnv = (import.meta as any).env || {};
 const firebaseConfig = {
-  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || defaultFirebaseConfig.projectId,
-  appId: metaEnv.VITE_FIREBASE_APP_ID || defaultFirebaseConfig.appId,
-  apiKey: metaEnv.VITE_FIREBASE_API_KEY || defaultFirebaseConfig.apiKey,
-  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || defaultFirebaseConfig.authDomain,
-  firestoreDatabaseId: metaEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID || defaultFirebaseConfig.firestoreDatabaseId,
-  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || defaultFirebaseConfig.storageBucket,
-  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || defaultFirebaseConfig.messagingSenderId,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || defaultFirebaseConfig.projectId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || defaultFirebaseConfig.appId,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || defaultFirebaseConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || defaultFirebaseConfig.authDomain,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || defaultFirebaseConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || defaultFirebaseConfig.messagingSenderId,
 };
 
 // Check if any firebaseConfig property is undefined or empty
 console.log("=== Firebase Environment Variables Diagnostic ===");
-console.log("VITE_FIREBASE_PROJECT_ID:", metaEnv.VITE_FIREBASE_PROJECT_ID || "None (Falling back)");
-console.log("VITE_FIREBASE_API_KEY:", metaEnv.VITE_FIREBASE_API_KEY ? "Loaded (Length: " + metaEnv.VITE_FIREBASE_API_KEY.length + ")" : "None (Falling back)");
+console.log("VITE_FIREBASE_PROJECT_ID:", import.meta.env.VITE_FIREBASE_PROJECT_ID || "None (Falling back)");
+console.log("VITE_FIREBASE_API_KEY:", import.meta.env.VITE_FIREBASE_API_KEY ? "Loaded (Length: " + import.meta.env.VITE_FIREBASE_API_KEY.length + ")" : "None (Falling back)");
 if (firebaseConfig.apiKey) {
   if (firebaseConfig.apiKey.startsWith("AIzaSy")) {
     console.log("apiKey status: Valid prefix verification (Starts with AIzaSy)");
@@ -38,8 +37,9 @@ console.log("=================================================");
 
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // Actual project mapping diagnostics
 console.log("=== Firebase Engine Project Diagnostics ===");

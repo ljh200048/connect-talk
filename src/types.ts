@@ -17,6 +17,7 @@ export interface UserProfile {
   role: UserRole;
   banned: boolean;
   createdAt: any; // Firestore Timestamp
+  isOfflineFallback?: boolean;
 }
 
 export interface FriendRelation {
