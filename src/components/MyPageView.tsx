@@ -300,6 +300,21 @@ export default function MyPageView({ currentUser, onLogout, onOpenAdmin }: MyPag
           </div>
         )}
 
+        {/* LOGOUT BUTTON CARD */}
+        <div className="bg-brand-sand border-2 border-brand-border rounded-[24px] p-4 flex flex-col gap-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <h5 className="font-extrabold text-brand-green">계정 로그아웃</h5>
+            <span className="text-[10px] font-semibold text-stone-500">안전하게 접속을 구성 해제합니다.</span>
+          </div>
+          <button
+            onClick={handleLogoutAction}
+            className="w-full bg-rose-500 hover:bg-rose-600 text-white border-2 border-brand-border font-black text-xs py-3.5 rounded-full transition-all flex items-center justify-center gap-1.5 shadow-md"
+          >
+            <LogOut className="w-4 h-4" />
+            계정 로그아웃 하기
+          </button>
+        </div>
+
         {/* Safety tip guideline block */}
         <div className="bg-brand-sand border-2 border-brand-border rounded-[24px] p-4 flex gap-3 text-stone-600 text-xs shadow-xs">
           <BadgeInfo className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />

@@ -257,7 +257,10 @@ export default function App() {
           {activeTab === 'mypage' && (
             <MyPageView 
               currentUser={currentUser}
-              onLogout={() => {}}
+              onLogout={() => {
+                setCurrentUser(null);
+                setActiveTab('friends');
+              }}
               onOpenAdmin={() => setShowAdmin(true)}
             />
           )}

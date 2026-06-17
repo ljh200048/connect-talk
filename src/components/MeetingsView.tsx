@@ -335,13 +335,17 @@ export default function MeetingsView({ currentUser }: MeetingsViewProps) {
     if (!confirm('이 모임 채팅방을 나가시겠습니까?')) return;
     const path = `chatRooms/${roomId}`;
     try {
+      // Unsubscribe from messages subcollection listener immediately before modifying membership
+      if (activeRoomId === roomId) {
+        setActiveRoomId(null);
+      }
+
       await updateDoc(doc(db, 'chatRooms', roomId), {
         members: arrayRemove(currentUser.userId)
       }).catch((err) => {
         handleFirestoreError(err, OperationType.UPDATE, path);
         throw err;
       });
-      setActiveRoomId(null);
       alert('모임방에서 정상적으로 퇴장했습니다.');
     } catch (err: any) {
       console.error("Leave room error:", err);
